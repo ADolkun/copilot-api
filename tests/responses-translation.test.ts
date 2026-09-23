@@ -381,6 +381,30 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(emptyTools).not.toHaveProperty("tool_choice")
   })
 
+  it("omits tool_choice when every tool is dropped in translation", () => {
+    const result = translateAnthropicMessagesToResponsesPayload({
+      model: "gpt-5.4",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: "search tools" }],
+      tools: [
+        {
+          name: "mcp__tool_search__search",
+          description: "Search deferred tools",
+          input_schema: {
+            type: "object",
+            properties: {
+              names: { type: "string" },
+            },
+            required: ["names"],
+          },
+        },
+      ],
+    })
+
+    expect(result.tools).toEqual([])
+    expect(result).not.toHaveProperty("tool_choice")
+  })
+
   it("keeps a translated tool_choice when the request has tools", () => {
     const defaultChoice = translateAnthropicMessagesToResponsesPayload({
       ...samplePayload,
