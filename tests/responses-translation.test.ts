@@ -366,6 +366,46 @@ describe("translateAnthropicMessagesToResponsesPayload", () => {
     expect(result).not.toHaveProperty("prompt_cache_key")
   })
 
+  it("omits tool_choice when the request has no tools", () => {
+    const missingTools =
+      translateAnthropicMessagesToResponsesPayload(samplePayload)
+    const emptyTools = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      tools: [],
+      tool_choice: { type: "any" },
+    })
+
+    expect(missingTools.tools).toBeNull()
+    expect(missingTools).not.toHaveProperty("tool_choice")
+    expect(emptyTools.tools).toBeNull()
+    expect(emptyTools).not.toHaveProperty("tool_choice")
+  })
+
+  it("keeps a translated tool_choice when the request has tools", () => {
+    const defaultChoice = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      tools: sampleTools,
+    })
+    const namedChoice = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      tools: sampleTools,
+      tool_choice: { type: "tool", name: "getWeather" },
+    })
+    const requiredChoice = translateAnthropicMessagesToResponsesPayload({
+      ...samplePayload,
+      tools: sampleTools,
+      tool_choice: { type: "any" },
+    })
+
+    expect(defaultChoice.tools).not.toBeNull()
+    expect(defaultChoice.tool_choice).toBe("auto")
+    expect(namedChoice.tool_choice).toEqual({
+      type: "function",
+      name: "getWeather",
+    })
+    expect(requiredChoice.tool_choice).toBe("required")
+  })
+
   it("maps tool_reference tool results into function_call_output text", () => {
     const result = translateAnthropicMessagesToResponsesPayload({
       model: "gpt-4.1",
