@@ -430,6 +430,79 @@ npx @jeffreycao/copilot-api@latest auth login --provider dashscope
 npx @jeffreycao/copilot-api@latest start
 ```
 
+### Running in the background
+
+A gateway started from a terminal stops when that terminal closes, and clients then fail with `ECONNREFUSED`. `nohup` does not prevent this. Node.js resets `SIGHUP` to its default action at startup, which undoes `nohup`, so `nohup npx @jeffreycao/copilot-api@latest start &` still exits with the terminal. To keep the gateway running, let the OS service manager start it. Both examples below restart the gateway if it exits and stop it with `SIGTERM`, which it handles by shutting down gracefully. `npx` resolves `@latest` only when the service starts, so restart the service to update.
+
+A service does not inherit your shell environment. If the gateway needs variables such as `HTTPS_PROXY` (with `--proxy-env`) or `COPILOT_API_HOME`, add them to `EnvironmentVariables` (launchd) or as `Environment=` lines (systemd).
+
+**macOS (launchd).** Save this as `~/Library/LaunchAgents/local.copilot-api.plist`. launchd does not read your shell profile or expand `~`, so every path must be absolute. Replace `/opt/homebrew/bin` with the output of `dirname "$(which npx)"` (that directory must also contain `node`), and `YOUR_USER` with your user name.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.copilot-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/npx</string>
+    <string>-y</string>
+    <string>@jeffreycao/copilot-api@latest</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/copilot-api.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/copilot-api.log</string>
+</dict>
+</plist>
+```
+
+```sh
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.copilot-api.plist  # start now and at every login
+launchctl kickstart -k gui/$(id -u)/local.copilot-api                            # restart, for example to update
+launchctl bootout gui/$(id -u)/local.copilot-api                                 # stop until the next login
+```
+
+To stop it for good, run the `bootout` command and delete the plist.
+
+**Linux (systemd).** Save this as `~/.config/systemd/user/copilot-api.service`. Replace `/usr/bin` with the output of `dirname "$(which npx)"` in both places (that directory must also contain `node`).
+
+```ini
+[Unit]
+Description=copilot-api gateway
+
+[Service]
+ExecStart=/usr/bin/npx -y @jeffreycao/copilot-api@latest start
+Environment=PATH=/usr/bin:/bin
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now copilot-api   # start now and at every login
+systemctl --user restart copilot-api        # restart, for example to update
+systemctl --user disable --now copilot-api  # stop for good
+journalctl --user -u copilot-api -f         # follow the logs
+```
+
+A user service stops when you log out. To keep it running without a login session, run `loginctl enable-linger "$USER"`.
+
 ## Using with Docker
 
 The supplied Compose file uses the current published `ghcr.io/caozhiyuan/copilot-api:latest` image. No local image build is required. It stores gateway state in `/data` and runs the server as the non-root `bun` user.
@@ -908,3 +981,7 @@ When the GitHub Copilot provider returns or logs `Encrypted function output cont
 ```
 
 Restart the server after changing the config. See [Configuration (config.json)](#configuration-configjson) for the full option reference.
+
+**Clients get `ECONNREFUSED` after a terminal closes**
+
+If the gateway was started from a terminal, including with `nohup`, it exits when that terminal closes. Run it as a service instead; see [Running in the background](#running-in-the-background).

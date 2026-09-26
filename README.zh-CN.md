@@ -458,6 +458,81 @@ npx @jeffreycao/copilot-api@latest auth login --provider dashscope
 npx @jeffreycao/copilot-api@latest start
 ```
 
+<a id="running-in-the-background"></a>
+
+### 后台运行
+
+从终端启动的网关会在该终端关闭时退出，之后客户端会报 `ECONNREFUSED`。`nohup` 无法避免这种情况：Node.js 启动时会把 `SIGHUP` 恢复为默认处理方式，抵消了 `nohup` 的作用，所以 `nohup npx @jeffreycao/copilot-api@latest start &` 仍会随终端一起退出。要让网关持续运行，请交给操作系统的服务管理器启动。下面两个示例都会在网关退出后自动重启它，并用 `SIGTERM` 停止它，网关收到后会正常优雅退出。`npx` 只在服务启动时解析 `@latest`，因此需要重启服务才能更新版本。
+
+服务不会继承你的 shell 环境变量。如果网关需要 `HTTPS_PROXY`（配合 `--proxy-env`）或 `COPILOT_API_HOME` 等变量，请把它们加到 `EnvironmentVariables`（launchd）或写成 `Environment=` 行（systemd）。
+
+**macOS（launchd）**：保存为 `~/Library/LaunchAgents/local.copilot-api.plist`。launchd 不读取 shell 配置文件，也不展开 `~`，所以所有路径都必须是绝对路径。把 `/opt/homebrew/bin` 替换为 `dirname "$(which npx)"` 的输出（该目录中也必须有 `node`），把 `YOUR_USER` 替换为你的用户名。
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.copilot-api</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/npx</string>
+    <string>-y</string>
+    <string>@jeffreycao/copilot-api@latest</string>
+    <string>start</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/copilot-api.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/YOUR_USER/Library/Logs/copilot-api.log</string>
+</dict>
+</plist>
+```
+
+```sh
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.copilot-api.plist  # 立即启动，并在每次登录时启动
+launchctl kickstart -k gui/$(id -u)/local.copilot-api                            # 重启，例如用于更新
+launchctl bootout gui/$(id -u)/local.copilot-api                                 # 停止，直到下次登录
+```
+
+如需永久停止，先执行 `bootout` 命令，再删除该 plist。
+
+**Linux（systemd）**：保存为 `~/.config/systemd/user/copilot-api.service`。把两处 `/usr/bin` 都替换为 `dirname "$(which npx)"` 的输出（该目录中也必须有 `node`）。
+
+```ini
+[Unit]
+Description=copilot-api gateway
+
+[Service]
+ExecStart=/usr/bin/npx -y @jeffreycao/copilot-api@latest start
+Environment=PATH=/usr/bin:/bin
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+```
+
+```sh
+systemctl --user daemon-reload
+systemctl --user enable --now copilot-api   # 立即启动，并在每次登录时启动
+systemctl --user restart copilot-api        # 重启，例如用于更新
+systemctl --user disable --now copilot-api  # 永久停止
+journalctl --user -u copilot-api -f         # 实时查看日志
+```
+
+用户服务会在你注销时停止。如需在没有登录会话时也保持运行，请执行 `loginctl enable-linger "$USER"`。
+
 <a id="using-with-docker"></a>
 
 ## 配合 Docker 使用
@@ -958,3 +1033,7 @@ curl http://localhost:4141/dashscope/v1/messages \
 ```
 
 修改后重启服务生效。完整配置项说明见[配置（config.json）](#configuration-configjson)。
+
+**关闭终端后客户端报 `ECONNREFUSED`**
+
+如果网关是从终端启动的（包括用 `nohup` 启动），终端关闭时它也会退出。请改为以服务方式运行，见[后台运行](#running-in-the-background)。
