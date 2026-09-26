@@ -432,7 +432,9 @@ npx @jeffreycao/copilot-api@latest start
 
 ### Running in the background
 
-A gateway started from a terminal stops when that terminal closes, and clients then fail with `ECONNREFUSED`. `nohup` does not prevent this. Node.js resets `SIGHUP` to its default action at startup, which undoes `nohup`, so `nohup npx @jeffreycao/copilot-api@latest start &` still exits with the terminal. To keep the gateway running, let the OS service manager start it. Both examples below restart the gateway if it exits and stop it with `SIGTERM`, which it handles by shutting down gracefully. `npx` resolves `@latest` only when the service starts, so restart the service to update.
+A gateway started from a terminal stops when that terminal closes, and clients then fail with `ECONNREFUSED`. `nohup` does not prevent this. Node.js resets `SIGHUP` to its default action at startup, which undoes `nohup`, so `nohup npx @jeffreycao/copilot-api@latest start &` still exits with the terminal. To keep the gateway running, let the OS service manager start it. Both examples below restart the gateway if it exits. They stop it with `SIGTERM`, on which the gateway flushes its logs and usage data and exits. `npx` resolves `@latest` only when the service starts, so restart the service to update. A restart cuts off any request in flight.
+
+Finish authentication first by running `npx @jeffreycao/copilot-api@latest auth` in a terminal. When no GitHub token or provider is configured, `start` asks setup questions, and a service has no terminal to answer them.
 
 A service does not inherit your shell environment. If the gateway needs variables such as `HTTPS_PROXY` (with `--proxy-env`) or `COPILOT_API_HOME`, add them to `EnvironmentVariables` (launchd) or as `Environment=` lines (systemd).
 
@@ -477,15 +479,15 @@ launchctl bootout gui/$(id -u)/local.copilot-api                                
 
 To stop it for good, run the `bootout` command and delete the plist.
 
-**Linux (systemd).** Save this as `~/.config/systemd/user/copilot-api.service`. Replace `/usr/bin` with the output of `dirname "$(which npx)"` in both places (that directory must also contain `node`).
+**Linux (systemd).** Save this as `~/.config/systemd/user/copilot-api.service`. Replace `/usr/local/bin` with the output of `dirname "$(which npx)"` in both places (that directory must also contain `node`).
 
 ```ini
 [Unit]
 Description=copilot-api gateway
 
 [Service]
-ExecStart=/usr/bin/npx -y @jeffreycao/copilot-api@latest start
-Environment=PATH=/usr/bin:/bin
+ExecStart=/usr/local/bin/npx -y @jeffreycao/copilot-api@latest start
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Restart=always
 RestartSec=5
 

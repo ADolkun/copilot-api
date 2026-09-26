@@ -462,7 +462,9 @@ npx @jeffreycao/copilot-api@latest start
 
 ### 后台运行
 
-从终端启动的网关会在该终端关闭时退出，之后客户端会报 `ECONNREFUSED`。`nohup` 无法避免这种情况：Node.js 启动时会把 `SIGHUP` 恢复为默认处理方式，抵消了 `nohup` 的作用，所以 `nohup npx @jeffreycao/copilot-api@latest start &` 仍会随终端一起退出。要让网关持续运行，请交给操作系统的服务管理器启动。下面两个示例都会在网关退出后自动重启它，并用 `SIGTERM` 停止它，网关收到后会正常优雅退出。`npx` 只在服务启动时解析 `@latest`，因此需要重启服务才能更新版本。
+从终端启动的网关会在该终端关闭时退出，之后客户端会报 `ECONNREFUSED`。`nohup` 无法避免这种情况：Node.js 启动时会把 `SIGHUP` 恢复为默认处理方式，抵消了 `nohup` 的作用，所以 `nohup npx @jeffreycao/copilot-api@latest start &` 仍会随终端一起退出。要让网关持续运行，请交给操作系统的服务管理器启动。下面两个示例都会在网关退出后自动重启它。它们用 `SIGTERM` 停止网关，网关收到后会写出日志和用量数据，然后退出。`npx` 只在服务启动时解析 `@latest`，因此需要重启服务才能更新版本。重启会中断正在处理的请求。
+
+请先在终端中运行 `npx @jeffreycao/copilot-api@latest auth` 完成认证。未配置 GitHub token 或 provider 时，`start` 会提出设置问题，而服务没有终端可以回答。
 
 服务不会继承你的 shell 环境变量。如果网关需要 `HTTPS_PROXY`（配合 `--proxy-env`）或 `COPILOT_API_HOME` 等变量，请把它们加到 `EnvironmentVariables`（launchd）或写成 `Environment=` 行（systemd）。
 
@@ -507,15 +509,15 @@ launchctl bootout gui/$(id -u)/local.copilot-api                                
 
 如需永久停止，先执行 `bootout` 命令，再删除该 plist。
 
-**Linux（systemd）**：保存为 `~/.config/systemd/user/copilot-api.service`。把两处 `/usr/bin` 都替换为 `dirname "$(which npx)"` 的输出（该目录中也必须有 `node`）。
+**Linux（systemd）**：保存为 `~/.config/systemd/user/copilot-api.service`。把两处 `/usr/local/bin` 都替换为 `dirname "$(which npx)"` 的输出（该目录中也必须有 `node`）。
 
 ```ini
 [Unit]
 Description=copilot-api gateway
 
 [Service]
-ExecStart=/usr/bin/npx -y @jeffreycao/copilot-api@latest start
-Environment=PATH=/usr/bin:/bin
+ExecStart=/usr/local/bin/npx -y @jeffreycao/copilot-api@latest start
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Restart=always
 RestartSec=5
 
